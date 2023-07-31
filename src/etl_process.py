@@ -39,7 +39,7 @@ def load_data_with_logging(csv_files):
     for csv_file in csv_files:
         table_name = csv_file.split('/')[-1].split('.')[0].upper()
         table_name = table_name.lower()
-        df = pd.read_csv(csv_file, sep=';', encoding='cp866')
+        df = pd.read_csv(csv_file, sep=';', encoding='cp866', index_col= 0)
         print(table_name)
         print("Data from CSV file:")
         print(df)
