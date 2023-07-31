@@ -3,6 +3,7 @@ from sqlalchemy import create_engine, text
 import json
 import datetime
 import psycopg2
+import os
 
 # Задание констант для подключения к PostgreSQL
 DB_TYPE = 'postgresql'
@@ -19,12 +20,12 @@ engine = create_engine(connection_string)
 def check_connection():
     try:
         connection = psycopg2.connect(
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME
-    )
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME
+        )
         cursor = connection.cursor()
         cursor.execute('SELECT 1;')
         result = cursor.fetchone()
@@ -34,18 +35,61 @@ def check_connection():
         connection.close()
     except Exception as e:
         print("Error:", e)
+def copy_csv_to_utf8(csv_file):
+    new_csv_file = os.path.splitext(csv_file)[0] + '_utf8.csv'
+    with open(csv_file, 'r', encoding='utf-8') as f_in:
+        with open(new_csv_file, 'w', encoding='utf-8', newline='') as f_out:
+            for line in f_in:
+                f_out.write(line)
+    
+    return new_csv_file
+def load_data_with_logging(csv_files):
+    for csv_file in csv_files:
+        table_name = csv_file.split('/')[-1].split('.')[0].upper()
+        table_name = table_name.lower()
+        df = pd.read_csv(csv_file, sep=';', encoding='cp866')
+        print(table_name)
+        print("Data from CSV file:")
+        print(df)
+
+        try:
+            # Запись данных в таблицу в схеме DS
+            df.to_sql(table_name, engine, schema='ds', if_exists='replace', index=False)
+            for index, row in df.iterrows():
+                row_data = row.to_dict()
+                # Логирование каждой строки в таблицу logs.logs_table
+                log_data = {
+                    'log_time': str(datetime.datetime.now()),
+                    'name_of_table':str(table_name),
+                    'log_data': json.dumps(row_data),
+                    'status': 'success'
+                }
+                log_entry = pd.DataFrame([log_data])
+                log_entry.to_sql('logs', engine, schema='logs', if_exists='append', index=False)
+
+        except Exception as e:
+            # Логирование ошибки загрузки в таблицу logs.logs_table
+            log_data = {
+                'log_time': str(datetime.datetime.now()),
+                'name_of_table':str(table_name),
+                'log_data': str(e),
+                'status': 'fail'
+            }
+            log_entry = pd.DataFrame([log_data])
+            log_entry.to_sql('logs', engine, schema='logs', if_exists='append', index=False)
+
 if __name__ == "__main__":
-    # Создание схемы logs и таблицы logs.logs_table, если их нет
+    #Создание схемы logs и таблицы logs.logs_table, если их нет
     with engine.connect() as conn:
         conn.execute(text('''
             CREATE SCHEMA IF NOT EXISTS logs;
         '''))
 
         conn.execute(text('''
-            CREATE TABLE IF NOT EXISTS logs.logs_table (
+            CREATE TABLE IF NOT EXISTS logs.logs (
                 log_id SERIAL PRIMARY KEY,
                 log_time TIMESTAMP,
-                table_name VARCHAR(50),
+                name_of_table VARCHAR(30),
                 log_data JSONB,
                 status VARCHAR(10)
             );
@@ -60,5 +104,16 @@ if __name__ == "__main__":
         '../task_1.1/md_currency_d.csv',
         '../task_1.1/md_exchange_rate_d.csv',
     ]
-    print(csv_files)
+    # '../task_1.1/md_account_d.csv', работает
+    # '../task_1.1/ft_balance_f.csv', работает
+    # '../task_1.1/md_ledger_account_s.csv', кодировка?
+    # '../task_1.1/ft_posting_f.csv', работает но долго
+    # '../task_1.1/md_currency_d.csv', кодировка?
+    # '../task_1.1/md_exchange_rate_d.csv', работает средней продолжительности
+    csv_test_files = [
+        '../task_1.1/md_currency_d.csv',
+    ]
+    # Проверка соединения
     check_connection()
+    # Загрузка данных и логирование
+    load_data_with_logging(csv_test_files)
