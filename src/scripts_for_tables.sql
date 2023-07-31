@@ -70,10 +70,10 @@ CREATE TABLE IF NOT EXISTS DS.MD_LEDGER_ACCOUNT_S (
 --создание схемы logs
 CREATE SCHEMA IF NOT EXISTS logs;
 --создание таблицы для логов 
-CREATE TABLE IF NOT EXISTS logs.logs (
+ CREATE TABLE IF NOT EXISTS logs.logs (
     log_id SERIAL PRIMARY KEY,
     log_time TIMESTAMP,
-    name_of_table VARCHAR(50),
+    name_of_table VARCHAR(30),
     log_data JSONB,
     status VARCHAR(10)
 );

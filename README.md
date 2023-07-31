@@ -7,6 +7,7 @@ This project provides a Python script for performing ETL (Extract, Transform, Lo
 - Python 3.x
 - Pandas library (`pip install pandas`)
 - SQLAlchemy library (`pip install sqlalchemy`)
+- psycopg2 library (`pip install psycopg2`)
 - PostgreSQL database
 
 ![](./img/etl-process-explained-diagram.png)
