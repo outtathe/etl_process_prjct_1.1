@@ -50,7 +50,7 @@ def load_data_with_logging(csv_files):
             log = pd.DataFrame({
                 'log_time': [str(datetime.datetime.now()) for i in range(len(df))],
                 'name_of_table': [table_name for i in range(len(df))],
-                'log_data': df.apply(lambda x: json.dumps({i: j for i, j in x.astype(object).replace(np.nan, 'None').items()}), axis=1),
+                'log_data': df.apply(lambda x: json.dumps({i: j for i, j in x.astype(object).replace(np.nan, None).items()}), axis=1),
                 'status': ['success' for i in range(len(df))]
             })
             log.to_sql('logs', engine, schema='logs', if_exists='append', index=False)
