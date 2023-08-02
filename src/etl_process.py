@@ -4,6 +4,7 @@ from sqlalchemy import create_engine, text
 import json
 import datetime
 import psycopg2
+import time
 
 # Задание констант для подключения к PostgreSQL
 DB_TYPE = 'postgresql'
@@ -39,16 +40,16 @@ def load_data_with_logging(csv_files):
     for csv_file in csv_files:
         table_name = csv_file.split('/')[-1].split('.')[0].upper()
         table_name = table_name.lower()
-        df = pd.read_csv(csv_file, sep=';', encoding='cp866', index_col= 0)
+        df = pd.read_csv(csv_file, sep=';', encoding='cp866', index_col= 0, header = 0)
+        df.columns = df.columns.str.lower()
         print(table_name)
         print("Data from CSV file:")
         print(df)
-
         try:
             # Запись данных в таблицу в схеме DS
-            df.to_sql(table_name, engine, schema='ds', if_exists='replace', index=False)
+            df.to_sql(table_name, engine, schema='ds', if_exists='append', index=False)
             log = pd.DataFrame({
-                'log_time': [str(datetime.datetime.now()) for i in range(len(df))],
+                'log_time': [str(datetime.datetime.now() - datetime.timedelta(seconds=5)) for i in range(len(df))],
                 'name_of_table': [table_name for i in range(len(df))],
                 'log_data': df.apply(lambda x: json.dumps({i: j for i, j in x.astype(object).replace(np.nan, None).items()}), axis=1),
                 'status': ['success' for i in range(len(df))]
@@ -91,7 +92,10 @@ if __name__ == "__main__":
         '../task_1.1/md_currency_d.csv',
         '../task_1.1/md_exchange_rate_d.csv',
     ]
+    csv_test_files = [
+        '../task_1.1/ft_balance_f.csv',
+    ]
     # Проверка соединения
     check_connection()
     # Загрузка данных и логирование
-    load_data_with_logging(csv_files)
+    load_data_with_logging(csv_test_files)
