@@ -49,9 +49,6 @@ def create_temp_table_with_same_structure(table_name, temp_table_name):
     conn = engine.connect().connection
     cursor = conn.cursor()
     cursor.execute(f"CREATE TABLE ds.{temp_table_name} AS SELECT * FROM ds.{table_name} WHERE false;")
-    """ debug"""
-    print(f"CREATE TABLE ds.{temp_table_name} AS SELECT * FROM ds.{table_name} WHERE false;")
-    """ debug"""
     conn.commit()
     cursor.close()
     conn.close()
@@ -72,6 +69,44 @@ def execute_query(query, data=None):
     conn.commit()
     cur.close()
     conn.close()
+def insert_data_for_posting_ft(table_name, temp_table_name):
+    conn = engine.connect().connection
+    cur = conn.cursor()
+    # Insert new rows
+    if table_name == 'ft_balance_f':
+        new_insert_query = f"""
+            INSERT INTO ds.{table_name} (on_date, account_rk, currency_rk, balance_out)
+            SELECT * FROM ds.{temp_table_name}
+            ON CONFLICT DO NOTHING;
+        """
+    elif table_name == 'ft_posting_f':
+        new_insert_query = f"""
+            INSERT INTO ds.{table_name} (oper_date, credit_account_rk, debet_account_rk, credit_amount, debet_amount)
+            SELECT * FROM ds.{temp_table_name}
+            ON CONFLICT DO NOTHING;
+        """
+    cur.execute(new_insert_query)
+    # Update existing rows
+    if table_name == 'ft_balance_f':
+        new_update_query = f"""UPDATE ds.ft_balance_f AS d
+                SET currency_rk = s.currency_rk, balance_out = s.balance_out
+                FROM ds.temp_ft_balance_f AS s
+                WHERE s.on_date = d.on_date AND s.account_rk = d.account_rk;"""
+    elif table_name == 'ft_posting_f':
+        new_update_query = f"""
+            UPDATE ds.{table_name} AS dst
+            SET credit_amount = src.credit_amount,
+                debet_amount = src.debet_amount
+            FROM ds.{temp_table_name} AS src
+            WHERE dst.oper_date = src.oper_date
+                AND dst.credit_account_rk = src.credit_account_rk
+                AND dst.debet_account_rk = src.debet_account_rk;
+        """
+    cur.execute(new_update_query)
+    
+    conn.commit()
+    cur.close()
+    conn.close()
 def load_data_with_logging(csv_files):
     for csv_file in csv_files:
         table_name = csv_file.split('/')[-1].split('.')[0].upper()
@@ -81,11 +116,11 @@ def load_data_with_logging(csv_files):
         if table_name == 'md_ledger_account_s':
             target_column = 'pair_account'
             df[target_column] = df[target_column].apply(lambda x: str(x)[:5] if pd.notna(x) and isinstance(x, (int, float)) else None if pd.isna(x) else x).astype(object)
-            column_series = df['pair_account']
+            # column_series = df['pair_account']
         print(table_name)
         print("Data from CSV file:")
         print(df)
-
+        
         try:
             # 1. Создаем временную таблицу stg и вставляем данные из файла
             temp_table_name = f'temp_{table_name}'
@@ -103,9 +138,6 @@ def load_data_with_logging(csv_files):
                 FROM ds.{temp_table_name} AS s
                 WHERE {where_clause};
             """)
-            """ debug"""
-            print("Обновление: ", update_query)
-            """ debug"""
             with engine.connect() as conn:
                 conn.execute(update_query)
                 conn.close()
@@ -120,12 +152,13 @@ def load_data_with_logging(csv_files):
                 WHERE { ' AND '.join(f's.{col} = d.{col}' for col in primary_keys) }
                 );
             """
-            print("select query: ", select_query)
             insert_data = pd.read_sql(select_query, engine)
-            print("insert data: ", insert_data)
             # 4. Добавляем данные в таблицу dst
-            insert_data.drop_duplicates(inplace=True)
-            insert_data.to_sql(table_name, engine, schema='ds', if_exists='append', index=False)
+            if table_name == 'ft_posting_f' or table_name == 'ft_balance_f':
+                insert_data_for_posting_ft(table_name, temp_table_name)
+            else:
+                insert_data.drop_duplicates(inplace=True)
+                insert_data.to_sql(table_name, engine, schema='ds', if_exists='append', index=False)
             # 5. Логируем успех
             log = pd.DataFrame({
                 'log_time': [str(datetime.datetime.now() - datetime.timedelta(seconds=5)) for _ in range(len(df))],
@@ -134,8 +167,6 @@ def load_data_with_logging(csv_files):
                 'status': ['success' for _ in range(len(df))]
             })
             log.to_sql('logs', engine, schema='logs', if_exists='append', index=False)
-            print("log_data is: ", log.log_data)
-            print(log)
             # log.to_sql('logs', engine, schema='logs', if_exists='append', index=False, dtype={'log_data': 'JSONB'})
             # 6. Удаляем временную таблицу
             delete_temp_table(temp_table_name)
@@ -147,7 +178,6 @@ def load_data_with_logging(csv_files):
                 'log_data': json.dumps(str(e)),
                 'status': 'fail'
             }
-            print(log_data)
             log_entry = pd.DataFrame([log_data])
             log_entry.to_sql('logs', engine, schema='logs', if_exists='append', index=False)
             delete_temp_table(temp_table_name)
@@ -167,29 +197,17 @@ if __name__ == "__main__":
                 status VARCHAR(10)
             );
         '''))
-
-    # '../task_1.1/md_ledger_account_s.csv', работает
-    #     '../task_1.1/md_account_d.csv', работает
-    #     '../task_1.1/ft_balance_f.csv', работает
-    #     '../task_1.1/ft_posting_f.csv', 
-    #     '../task_1.1/md_currency_d.csv', работает
-    #     '../task_1.1/md_exchange_rate_d.csv', работает
     csv_files = [
-        '../task_1.1/md_ledger_account_s.csv',
-        '../task_1.1/md_account_d.csv',
-        '../task_1.1/ft_balance_f.csv',
-        '../task_1.1/ft_posting_f.csv',
-        '../task_1.1/md_currency_d.csv',
-        '../task_1.1/md_exchange_rate_d.csv',
+        '../../task_1.1/md_ledger_account_s.csv',
+        '../../task_1.1/md_account_d.csv',
+        '../../task_1.1/ft_balance_f.csv',
+        '../../task_1.1/ft_posting_f.csv',
+        '../../task_1.1/md_currency_d.csv',
+        '../../task_1.1/md_exchange_rate_d.csv',
     ]
-    csv_test_files = [
-        '../task_1.1/ft_balance_f.csv',
-    ]
-    some_csv = [
-        '../task_1.1/md_ledger_account_s.csv',
-        '../task_1.1/md_account_d.csv',
-        '../task_1.1/md_currency_d.csv',
-        '../task_1.1/md_exchange_rate_d.csv',
+    new_data = [
+        '../../task_1.1/ft_balance_f.csv',
     ]
     check_connection()
-    load_data_with_logging(csv_test_files)
+    # load_data_with_logging(csv_files)
+    load_data_with_logging(new_data)

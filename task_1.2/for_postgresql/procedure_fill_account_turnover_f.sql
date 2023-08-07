@@ -46,7 +46,7 @@ begin
          and i_OnDate between er.data_actual_date   and er.data_actual_end_date
        where p.oper_date = i_OnDate
          and i_OnDate           between a.data_actual_date    and a.data_actual_end_date
-         and a.data_actual_date between date_trunc('month', i_OnDate) and (date_trunc('MONTH', to_date(i_OnDate,'yyyy-mm-dd')) + INTERVAL '1 MONTH - 1 day')
+         and a.data_actual_date between date_trunc('month', i_OnDate) and (date_trunc('MONTH', i_OnDate) + INTERVAL '1 MONTH - 1 day')
        union all
       select p.debet_account_rk                   as account_rk
            , cast(null as numeric)                 as credit_amount
@@ -62,7 +62,7 @@ begin
          and i_OnDate between er.data_actual_date and er.data_actual_end_date
        where p.oper_date = i_OnDate
          and i_OnDate           between a.data_actual_date and a.data_actual_end_date
-         and a.data_actual_date between date_trunc('month', i_OnDate) and (date_trunc('MONTH', to_date(i_OnDate,'yyyy-mm-dd')) + INTERVAL '1 MONTH - 1 day')
+         and a.data_actual_date between date_trunc('month', i_OnDate) and (date_trunc('MONTH', i_OnDate) + INTERVAL '1 MONTH - 1 day')
     )
     select i_OnDate                               as on_date
          , t.account_rk

@@ -38,7 +38,7 @@ begin
 		backend_start
     )
 	select 	
-			nextval('dm.seq_lg_messages'),
+			nextval('dm.lg_messages_record_id_seq'),
 			now(),
 			pid,
 			substr(v_message, 1, c_splitToTable),
