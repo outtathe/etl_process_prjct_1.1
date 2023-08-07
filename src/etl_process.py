@@ -62,7 +62,7 @@ def load_data_with_logging(csv_files):
             log_data = {
                 'log_time': str(datetime.datetime.now()),
                 'name_of_table': str(table_name),
-                'log_data': str(e),
+                'log_data': json.dumps(str(e)),
                 'status': 'fail'
             }
             log_entry = pd.DataFrame([log_data])
@@ -104,4 +104,4 @@ if __name__ == "__main__":
         '../task_1.1/md_currency_d.csv',
     ]
     check_connection()
-    load_data_with_logging(csv_files)
+    load_data_with_logging(csv_test_files)

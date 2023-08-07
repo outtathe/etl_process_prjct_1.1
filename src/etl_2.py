@@ -49,6 +49,9 @@ def create_temp_table_with_same_structure(table_name, temp_table_name):
     conn = engine.connect().connection
     cursor = conn.cursor()
     cursor.execute(f"CREATE TABLE ds.{temp_table_name} AS SELECT * FROM ds.{table_name} WHERE false;")
+    """ debug"""
+    print(f"CREATE TABLE ds.{temp_table_name} AS SELECT * FROM ds.{table_name} WHERE false;")
+    """ debug"""
     conn.commit()
     cursor.close()
     conn.close()
@@ -75,7 +78,10 @@ def load_data_with_logging(csv_files):
         table_name = table_name.lower()
         df = pd.read_csv(csv_file, sep=';', encoding='cp866', index_col=0, header=0)
         df.columns = df.columns.str.lower()
-
+        if table_name == 'md_ledger_account_s':
+            target_column = 'pair_account'
+            df[target_column] = df[target_column].apply(lambda x: str(x)[:5] if pd.notna(x) and isinstance(x, (int, float)) else None if pd.isna(x) else x).astype(object)
+            column_series = df['pair_account']
         print(table_name)
         print("Data from CSV file:")
         print(df)
@@ -84,18 +90,22 @@ def load_data_with_logging(csv_files):
             # 1. Создаем временную таблицу stg и вставляем данные из файла
             temp_table_name = f'temp_{table_name}'
             create_temp_table_with_same_structure(table_name, temp_table_name)
+            if table_name == 'ft_balance_f':
+                df['on_date'] = pd.to_datetime(df['on_date'], format='%d.%m.%Y').dt.strftime('%Y-%m-%d')
+            df.to_sql(temp_table_name, engine, schema='ds', if_exists = 'append', index = False)
             # 2. Обновляем существующие данные в таблице dst
             primary_keys = get_primary_key_columns(table_name)
             set_clause = ', '.join(f'{col} = s.{col}' for col in df.columns if col not in primary_keys)
             where_clause = ' AND '.join(f's.{col} = d.{col}' for col in primary_keys)
-            print(where_clause)
             update_query = text(f"""
                 UPDATE ds.{table_name} AS d
                 SET {set_clause}
                 FROM ds.{temp_table_name} AS s
                 WHERE {where_clause};
             """)
-            print(update_query)
+            """ debug"""
+            print("Обновление: ", update_query)
+            """ debug"""
             with engine.connect() as conn:
                 conn.execute(update_query)
                 conn.close()
@@ -110,26 +120,23 @@ def load_data_with_logging(csv_files):
                 WHERE { ' AND '.join(f's.{col} = d.{col}' for col in primary_keys) }
                 );
             """
+            print("select query: ", select_query)
             insert_data = pd.read_sql(select_query, engine)
+            print("insert data: ", insert_data)
             # 4. Добавляем данные в таблицу dst
+            insert_data.drop_duplicates(inplace=True)
             insert_data.to_sql(table_name, engine, schema='ds', if_exists='append', index=False)
-
             # 5. Логируем успех
-            log_data = df.apply(lambda x: {i: j for i, j in x.astype(object).replace(pd.NA, None).items()}, axis=1)
-            # log_data = str(log_data)
-            log_data = log_data.apply(json.dumps)
             log = pd.DataFrame({
                 'log_time': [str(datetime.datetime.now() - datetime.timedelta(seconds=5)) for _ in range(len(df))],
                 'name_of_table': [table_name for _ in range(len(df))],
-                'log_data': log_data,
+                'log_data': df.apply(lambda x: json.dumps(str({i: j for i, j in x.astype(object).replace(np.nan, None).items()})), axis=1),
                 'status': ['success' for _ in range(len(df))]
             })
-            insert_log_query = f"INSERT INTO logs.logs VALUES ({','.join(['%s' for _ in range(len(log.columns))])})"
-            print("Вот билиберда! ", insert_log_query)
-            execute_query(insert_log_query, [tuple(row) for row in log.values])
-            print(log.log_data)
+            log.to_sql('logs', engine, schema='logs', if_exists='append', index=False)
+            print("log_data is: ", log.log_data)
+            print(log)
             # log.to_sql('logs', engine, schema='logs', if_exists='append', index=False, dtype={'log_data': 'JSONB'})
-
             # 6. Удаляем временную таблицу
             delete_temp_table(temp_table_name)
 
@@ -164,9 +171,9 @@ if __name__ == "__main__":
     # '../task_1.1/md_ledger_account_s.csv', работает
     #     '../task_1.1/md_account_d.csv', работает
     #     '../task_1.1/ft_balance_f.csv', работает
-    #     '../task_1.1/ft_posting_f.csv', работает
-    #     '../task_1.1/md_currency_d.csv',
-    #     '../task_1.1/md_exchange_rate_d.csv',
+    #     '../task_1.1/ft_posting_f.csv', 
+    #     '../task_1.1/md_currency_d.csv', работает
+    #     '../task_1.1/md_exchange_rate_d.csv', работает
     csv_files = [
         '../task_1.1/md_ledger_account_s.csv',
         '../task_1.1/md_account_d.csv',
@@ -176,7 +183,13 @@ if __name__ == "__main__":
         '../task_1.1/md_exchange_rate_d.csv',
     ]
     csv_test_files = [
+        '../task_1.1/ft_balance_f.csv',
+    ]
+    some_csv = [
+        '../task_1.1/md_ledger_account_s.csv',
+        '../task_1.1/md_account_d.csv',
         '../task_1.1/md_currency_d.csv',
+        '../task_1.1/md_exchange_rate_d.csv',
     ]
     check_connection()
     load_data_with_logging(csv_test_files)
